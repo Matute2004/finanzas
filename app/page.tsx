@@ -1,20 +1,33 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type RangeKey = "1mo" | "6mo" | "1y" | "5y";
+
 type ChartPoint = {
-  timestamp: number;
+  time: number;
   close: number;
 };
 
-type MarketCard = {
+type TickerData = {
   symbol: string;
   price: number;
   change: number;
   changePercent: number;
-  marketState: string;
+  previousClose: number;
+  currency: string;
   chart: ChartPoint[];
 };
 
-const TICKERS = ["GGAL", "YPFD", "PAMP", "EDN", "BMA", "TX", "AAPL"];
+const WATCHLIST = ["AAPL", "MSFT", "NVDA", "AMZN", "GGAL", "YPFD", "PAMP"];
+const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+  { key: "1mo", label: "1M" },
+  { key: "6mo", label: "6M" },
+  { key: "1y", label: "1A" },
+  { key: "5y", label: "5A" },
+];
 
-function buildSparkline(points: ChartPoint[]) {
+function buildLinePath(points: ChartPoint[]) {
   if (!points.length) return "";
 
   const values = points.map((point) => point.close);
@@ -24,51 +37,17 @@ function buildSparkline(points: ChartPoint[]) {
 
   return points
     .map((point, index) => {
-      const x = (index / Math.max(points.length - 1, 1)) * 220;
-      const y = 60 - ((point.close - min) / range) * 52;
+      const x = (index / Math.max(points.length - 1, 1)) * 720;
+      const y = 220 - ((point.close - min) / range) * 180;
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
 }
 
-async function getTickerData(symbol: string): Promise<MarketCard> {
-  const response = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1mo&interval=1d`,
-    { next: { revalidate: 300 } },
-  );
-
-  if (!response.ok) {
-    throw new Error(`No se pudo consultar ${symbol}`);
-  }
-
-  const payload = await response.json();
-  const result = payload?.chart?.result?.[0];
-  const meta = result?.meta ?? {};
-  const quote = result?.indicators?.quote?.[0] ?? {};
-  const closes: number[] = quote.close ?? [];
-  const timestamps: number[] = result?.timestamp ?? [];
-
-  const chart: ChartPoint[] = timestamps
-    .map((timestamp: number, index: number) => ({
-      timestamp,
-      close: closes[index],
-    }))
-    .filter((point: ChartPoint) => typeof point.close === "number" && Number.isFinite(point.close));
-
-  return {
-    symbol,
-    price: meta.regularMarketPrice ?? chart.at(-1)?.close ?? 0,
-    change: meta.regularMarketChange ?? 0,
-    changePercent: meta.regularMarketChangePercent ?? 0,
-    marketState: meta.marketState ?? "CLOSED",
-    chart,
-  };
-}
-
-function formatCurrency(value: number) {
+function formatCurrency(value: number, currency = "USD") {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 2,
   }).format(value);
 }
@@ -77,132 +56,221 @@ function formatPercent(value: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-export default async function Home() {
-  const results = await Promise.allSettled(TICKERS.map(getTickerData));
-  const marketData = results
-    .filter((result): result is PromiseFulfilledResult<MarketCard> => result.status === "fulfilled")
-    .map((result) => result.value);
+async function fetchTickerData(symbol: string, range: RangeKey): Promise<TickerData> {
+  const payload = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=1d`,
+    { cache: "no-store" },
+  );
 
-  const portfolioValue = marketData.reduce((sum, item) => sum + item.price, 0);
+  if (!payload.ok) {
+    throw new Error(`No pude traer ${symbol}`);
+  }
+
+  const data = await payload.json();
+  const result = data?.chart?.result?.[0];
+  const meta = result?.meta ?? {};
+  const quote = result?.indicators?.quote?.[0] ?? {};
+  const closes: number[] = quote.close ?? [];
+  const timestamps: number[] = result?.timestamp ?? [];
+
+  const chart: ChartPoint[] = timestamps
+    .map((time: number, index: number) => ({
+      time,
+      close: closes[index],
+    }))
+    .filter((point) => typeof point.close === "number" && Number.isFinite(point.close));
+
+  return {
+    symbol: symbol.toUpperCase(),
+    price: meta.regularMarketPrice ?? chart.at(-1)?.close ?? 0,
+    change: meta.regularMarketChange ?? 0,
+    changePercent: meta.regularMarketChangePercent ?? 0,
+    previousClose: meta.previousClose ?? chart[0]?.close ?? 0,
+    currency: meta.currency ?? "USD",
+    chart,
+  };
+}
+
+export default function Home() {
+  const [selectedSymbol, setSelectedSymbol] = useState("AAPL");
+  const [selectedRange, setSelectedRange] = useState<RangeKey>("1mo");
+  const [data, setData] = useState<TickerData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const nextData = await fetchTickerData(selectedSymbol, selectedRange);
+        if (active) setData(nextData);
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "Error al cargar el activo");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [selectedSymbol, selectedRange]);
+
+  const path = useMemo(() => (data ? buildLinePath(data.chart) : ""), [data]);
+  const positive = (data?.changePercent ?? 0) >= 0;
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-col gap-4 border-b border-white/10 pb-6 md:flex-row md:items-end md:justify-between">
+    <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-8 flex flex-col gap-3 border-b border-white/10 pb-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-emerald-300">
-              Mercado / CEDEARs
+              Análisis técnico
             </p>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Panel financiero
-            </h1>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Panel de acciones</h1>
           </div>
 
-          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100 shadow-lg shadow-emerald-950/20">
-            <span className="block text-xs uppercase tracking-[0.2em] text-emerald-300/80">
-              Portafolio demo
-            </span>
-            <strong className="mt-1 block text-2xl font-semibold">
-              {formatCurrency(portfolioValue)}
-            </strong>
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1">
+            {RANGE_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setSelectedRange(option.key)}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                  selectedRange === option.key
+                    ? "bg-emerald-400 text-slate-950"
+                    : "text-slate-300 hover:bg-white/5"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
         </header>
 
-        <section className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {marketData.slice(0, 4).map((item) => {
-            const positive = item.changePercent >= 0;
-            const path = buildSparkline(item.chart);
+        <section className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-slate-950/20">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+              Watchlist
+            </p>
 
-            return (
-              <article
-                key={item.symbol}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl shadow-slate-950/25"
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">{item.symbol}</p>
-                    <h2 className="mt-1 text-2xl font-semibold">{formatCurrency(item.price)}</h2>
-                  </div>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                      positive
-                        ? "bg-emerald-500/10 text-emerald-300"
-                        : "bg-rose-500/10 text-rose-300"
+            <div className="space-y-2">
+              {WATCHLIST.map((symbol) => {
+                const active = symbol === selectedSymbol;
+                return (
+                  <button
+                    key={symbol}
+                    type="button"
+                    onClick={() => setSelectedSymbol(symbol)}
+                    className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2.5 text-left transition ${
+                      active
+                        ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-200"
+                        : "border-white/10 bg-white/5 text-slate-200 hover:border-white/20"
                     }`}
                   >
-                    {formatPercent(item.changePercent)}
-                  </span>
-                </div>
-
-                <svg viewBox="0 0 220 60" className="h-14 w-full overflow-visible">
-                  <path
-                    d={path}
-                    fill="none"
-                    stroke={positive ? "#34d399" : "#f87171"}
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                  <span>{item.marketState}</span>
-                  <span>{item.change >= 0 ? "+" : ""}{formatCurrency(item.change)}</span>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-
-        <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-slate-950/30">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Cotizaciones</p>
-              <h3 className="mt-1 text-xl font-semibold">CEDEARs y acciones</h3>
+                    <span className="font-semibold">{symbol}</span>
+                    <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                      {symbol === "AAPL" ? "USA" : "Mkt"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs text-sky-200">
-              Datos en vivo (Yahoo Finance)
-            </span>
-          </div>
+          </aside>
 
-          <div className="overflow-hidden rounded-2xl border border-white/10">
-            <table className="min-w-full divide-y divide-white/10 text-left text-sm">
-              <thead className="bg-white/5 text-slate-300">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Ticker</th>
-                  <th className="px-4 py-3 font-medium">Precio</th>
-                  <th className="px-4 py-3 font-medium">Cambio</th>
-                  <th className="px-4 py-3 font-medium">1M</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10 bg-slate-950/40">
-                {marketData.map((item) => {
-                  const positive = item.changePercent >= 0;
+          <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-slate-950/30">
+            {loading && !data ? (
+              <div className="flex min-h-[360px] items-center justify-center text-slate-300">
+                Cargando precio y gráfico...
+              </div>
+            ) : error ? (
+              <div className="flex min-h-[360px] items-center justify-center text-rose-300">{error}</div>
+            ) : data ? (
+              <>
+                <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.28em] text-slate-400">Activo</p>
+                    <h2 className="mt-2 text-4xl font-bold tracking-tight">{data.symbol}</h2>
+                  </div>
 
-                  return (
-                    <tr key={item.symbol} className="hover:bg-white/5">
-                      <td className="px-4 py-3 font-medium text-white">{item.symbol}</td>
-                      <td className="px-4 py-3">{formatCurrency(item.price)}</td>
-                      <td className={`px-4 py-3 font-medium ${positive ? "text-emerald-300" : "text-rose-300"}`}>
-                        {formatPercent(item.changePercent)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <svg viewBox="0 0 120 28" className="h-7 w-28 overflow-visible">
-                          <path
-                            d={buildSparkline(item.chart.slice(-20))}
-                            fill="none"
-                            stroke={positive ? "#34d399" : "#f87171"}
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Precio</p>
+                    <div className="mt-1 flex items-center gap-3">
+                      <span className="text-3xl font-semibold">
+                        {formatCurrency(data.price, data.currency)}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-sm font-medium ${
+                          positive ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-300"
+                        }`}
+                      >
+                        {formatPercent(data.changePercent)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-6 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Cambio absoluto</p>
+                    <p className={`mt-2 text-lg font-semibold ${positive ? "text-emerald-300" : "text-rose-300"}`}>
+                      {data.change >= 0 ? "+" : ""}
+                      {formatCurrency(data.change, data.currency)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Cierre previo</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-100">
+                      {formatCurrency(data.previousClose, data.currency)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Rango</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-100">{selectedRange.toUpperCase()}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-4">
+                  <svg viewBox="0 0 720 220" className="h-72 w-full overflow-visible">
+                    <defs>
+                      <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stopColor={positive ? "#34d399" : "#f87171"} stopOpacity="0.35" />
+                        <stop offset="100%" stopColor={positive ? "#34d399" : "#f87171"} stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+
+                    {[0, 1, 2, 3].map((line) => (
+                      <line
+                        key={line}
+                        x1="0"
+                        x2="720"
+                        y1={30 + line * 50}
+                        y2={30 + line * 50}
+                        stroke="rgba(148, 163, 184, 0.12)"
+                        strokeWidth="1"
+                      />
+                    ))}
+
+                    <path d={`${path} L 720,220 L 0,220 Z`} fill="url(#chartGradient)" opacity="0.9" />
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={positive ? "#34d399" : "#f87171"}
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              </>
+            ) : null}
           </div>
         </section>
       </div>
