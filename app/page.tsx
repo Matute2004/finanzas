@@ -351,7 +351,7 @@ export default function Home() {
                         </svg>
                       </div>
 
-                      <div className="flex h-[200px] flex-col justify-between rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2 text-right text-xs text-slate-300">
+                      <div className="relative h-[220px] rounded-2xl border border-white/10 bg-slate-950/40 px-2 py-2 text-right text-[10px] text-slate-300">
                         {[0, 1, 2, 3, 4].map((step) => {
                           const value = chartMeta.max - (chartMeta.range / 4) * step;
                           const y = getChartY(value, chartMeta.min, chartMeta.max);
@@ -359,8 +359,8 @@ export default function Home() {
                           return (
                             <span
                               key={step}
-                              className="flex items-center justify-end font-medium"
-                              style={{ transform: `translateY(${(y - 100) * 0.06}px)` }}
+                              className="absolute right-2 -translate-y-1/2 whitespace-nowrap font-medium"
+                              style={{ top: `${(y / 220) * 100}%` }}
                             >
                               {formatCurrency(value, data.currency)}
                             </span>
