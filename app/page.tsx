@@ -33,18 +33,26 @@ function getTicker(symbol: string) {
   return `${symbol.toUpperCase().replace(/\.BA$/i, "")}.BA`;
 }
 
+function getChartY(value: number, min: number, max: number) {
+  const range = max - min || 1;
+  const chartTop = 20;
+  const chartBottom = 20;
+  const chartHeight = 220 - chartTop - chartBottom;
+
+  return 220 - chartBottom - ((value - min) / range) * chartHeight;
+}
+
 function buildLinePath(points: ChartPoint[]) {
   if (!points.length) return "";
 
   const values = points.map((point) => point.close);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const range = max - min || 1;
 
   return points
     .map((point, index) => {
       const x = (index / Math.max(points.length - 1, 1)) * 720;
-      const y = 220 - ((point.close - min) / range) * 180;
+      const y = getChartY(point.close, min, max);
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
@@ -60,6 +68,14 @@ function formatCurrency(value: number, currency = "USD") {
 
 function formatPercent(value: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function formatDateLabel(epoch: number) {
+  return new Date(epoch * 1000).toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "2-digit",
+  });
 }
 
 async function fetchTickerData(symbol: string, range: RangeKey): Promise<TickerData> {
@@ -141,9 +157,7 @@ export default function Home() {
       : data && data.chart[data.chart.length - 1];
 
   const hoverX = hoveredPoint && data ? (Math.max(data.chart.indexOf(hoveredPoint), 0) / Math.max(data.chart.length - 1, 1)) * 720 : 0;
-  const hoverY = hoveredPoint
-    ? 220 - ((hoveredPoint.close - chartMeta.min) / chartMeta.range) * 180
-    : 220;
+  const hoverY = hoveredPoint ? getChartY(hoveredPoint.close, chartMeta.min, chartMeta.max) : 220;
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
@@ -310,33 +324,44 @@ export default function Home() {
                               />
                               <circle cx={hoverX} cy={hoverY} r="5" fill={positive ? "#34d399" : "#f87171"} />
                               <rect
-                                x={Math.min(hoverX + 12, 610)}
-                                y={Math.max(hoverY - 38, 16)}
-                                width="94"
-                                height="30"
-                                rx="8"
-                                fill="rgba(15, 23, 42, 0.9)"
+                                x={Math.min(hoverX + 12, 565)}
+                                y={Math.max(hoverY - 46, 18)}
+                                width="132"
+                                height="44"
+                                rx="10"
+                                fill="rgba(15, 23, 42, 0.92)"
                                 stroke="rgba(148, 163, 184, 0.25)"
                               />
                               <text
-                                x={Math.min(hoverX + 24, 623)}
-                                y={Math.max(hoverY - 18, 35)}
+                                x={Math.min(hoverX + 24, 578)}
+                                y={Math.max(hoverY - 18, 36)}
                                 fill="#f8fafc"
                                 fontSize="12"
-                                fontWeight="600"
+                                fontWeight="700"
                               >
-                                {formatCurrency(hoveredPoint.close, data.currency)}
+                                <tspan x={Math.min(hoverX + 24, 578)} dy="0">
+                                  {formatCurrency(hoveredPoint.close, data.currency)}
+                                </tspan>
+                                <tspan x={Math.min(hoverX + 24, 578)} dy="14" fill="#cbd5e1" fontWeight="500">
+                                  {formatDateLabel(hoveredPoint.time)}
+                                </tspan>
                               </text>
                             </g>
                           )}
                         </svg>
                       </div>
 
-                      <div className="flex flex-col justify-between rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2 text-right text-xs text-slate-300">
+                      <div className="flex h-[200px] flex-col justify-between rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2 text-right text-xs text-slate-300">
                         {[0, 1, 2, 3, 4].map((step) => {
                           const value = chartMeta.max - (chartMeta.range / 4) * step;
+                          const y = getChartY(value, chartMeta.min, chartMeta.max);
+
                           return (
-                            <span key={step} className="font-medium">
+                            <span
+                              key={step}
+                              className="flex items-center justify-end font-medium"
+                              style={{ transform: `translateY(${(y - 100) * 0.06}px)` }}
+                            >
                               {formatCurrency(value, data.currency)}
                             </span>
                           );
