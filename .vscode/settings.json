@@ -7,6 +7,10 @@
         "/^python -c \"import json, urllib\\.request; symbols=\\['AAPL\\.BA','GGAL\\.BA','YPFD\\.BA','PAMP\\.BA','MSFT\\.BA'\\];\nfor sym in symbols:\n    try:\n        with urllib\\.request\\.urlopen\\(f'https://query1\\.finance\\.yahoo\\.com/v8/finance/chart/\\{sym\\}\\?range=1mo&interval=1d', timeout=20\\) as r:\n            data=json\\.load\\(r\\)\n        result=data\\.get\\('chart',\\{\\}\\)\\.get\\('result',\\[\\{\\}\\]\\)\\[0\\]\n        meta=result\\.get\\('meta',\\{\\}\\)\n        print\\(sym, 'OK', meta\\.get\\('regularMarketPrice'\\), 'count', len\\(result\\.get\\('timestamp',\\[\\]\\)\\)\\)\n    except Exception as e:\n        print\\(sym, 'ERR', type\\(e\\)\\.__name__, str\\(e\\)\\[:120\\]\\)\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^python - <<'PY'\nimport requests, json\nsymbols=\\['AAPL\\.BA','GGAL\\.BA','YPFD\\.BA','PAMP\\.BA','BMA\\.BA'\\]\nheaders=\\{'User-Agent':'Mozilla/5\\.0','Accept-Language':'es-AR,es;q=0\\.9'\\}\nfor sym in symbols:\n    url=f'https://query1\\.finance\\.yahoo\\.com/v8/finance/chart/\\{sym\\}\\?range=1mo&interval=1d'\n    try:\n        r=requests\\.get\\(url, headers=headers, timeout=25\\)\n        print\\(sym, 'status', r\\.status_code, 'len', len\\(r\\.text\\)\\)\n        if r\\.status_code==200:\n            data=r\\.json\\(\\)\n            result=data\\.get\\('chart',\\{\\}\\)\\.get\\('result',\\[\\{\\}\\]\\)\\[0\\]\n            print\\('meta_price', result\\.get\\('meta',\\{\\}\\)\\.get\\('regularMarketPrice'\\)\\)\n            print\\('timestamps', len\\(result\\.get\\('timestamp',\\[\\]\\)\\)\\)\n    except Exception as e:\n        print\\(sym, 'ERR', type\\(e\\)\\.__name__, e\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

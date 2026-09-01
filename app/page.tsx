@@ -66,37 +66,25 @@ function formatPercent(value: number) {
 }
 
 async function fetchTickerData(symbol: string, range: RangeKey): Promise<TickerData> {
-  const payload = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=1d`,
-    { cache: "no-store" },
-  );
+  const response = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}`, {
+    cache: "no-store",
+  });
 
-  if (!payload.ok) {
-    throw new Error(`No pude traer ${symbol}`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ message: `No pude traer ${symbol}` }));
+    throw new Error(payload.message ?? `No pude traer ${symbol}`);
   }
 
-  const data = await payload.json();
-  const result = data?.chart?.result?.[0];
-  const meta = result?.meta ?? {};
-  const quote = result?.indicators?.quote?.[0] ?? {};
-  const closes: number[] = quote.close ?? [];
-  const timestamps: number[] = result?.timestamp ?? [];
-
-  const chart: ChartPoint[] = timestamps
-    .map((time: number, index: number) => ({
-      time,
-      close: closes[index],
-    }))
-    .filter((point) => typeof point.close === "number" && Number.isFinite(point.close));
+  const data = await response.json();
 
   return {
-    symbol: symbol.toUpperCase(),
-    price: meta.regularMarketPrice ?? chart.at(-1)?.close ?? 0,
-    change: meta.regularMarketChange ?? 0,
-    changePercent: meta.regularMarketChangePercent ?? 0,
-    previousClose: meta.previousClose ?? chart[0]?.close ?? 0,
-    currency: meta.currency ?? "USD",
-    chart,
+    symbol: data.symbol,
+    price: data.price,
+    change: data.change,
+    changePercent: data.changePercent,
+    previousClose: data.previousClose,
+    currency: data.currency,
+    chart: data.chart,
   };
 }
 
