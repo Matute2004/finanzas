@@ -20,7 +20,7 @@ const fallbackChart = [
 ];
 
 export async function GET(request: NextRequest) {
-  const symbol = request.nextUrl.searchParams.get("symbol") ?? "AAPL.BA";
+  const symbol = (request.nextUrl.searchParams.get("symbol") ?? "AAPL.BA").toUpperCase();
   const range = request.nextUrl.searchParams.get("range") ?? "1mo";
 
   try {
@@ -40,6 +40,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         symbol: symbol.toUpperCase(),
         price: 180,
+        open: 175,
+        close: 179,
         change: 4,
         changePercent: 2.28,
         previousClose: 176,
@@ -65,12 +67,16 @@ export async function GET(request: NextRequest) {
       }))
       .filter((point) => typeof point.close === "number" && Number.isFinite(point.close));
 
+    const lastClose = chart.at(-1)?.close ?? meta.regularMarketPrice ?? 0;
+
     return NextResponse.json({
       symbol: (symbol || "AAPL.BA").toUpperCase(),
-      price: meta.regularMarketPrice ?? chart.at(-1)?.close ?? 0,
+      price: meta.regularMarketPrice ?? lastClose,
+      open: meta.regularMarketOpen ?? chart[0]?.close ?? lastClose,
+      close: meta.regularMarketPreviousClose ?? lastClose,
       change: meta.regularMarketChange ?? 0,
       changePercent: meta.regularMarketChangePercent ?? 0,
-      previousClose: meta.previousClose ?? chart[0]?.close ?? 0,
+      previousClose: meta.previousClose ?? lastClose,
       currency: meta.currency ?? "USD",
       chart,
     });
@@ -78,6 +84,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       symbol: symbol.toUpperCase(),
       price: 180,
+      open: 175,
+      close: 179,
       change: 4,
       changePercent: 2.28,
       previousClose: 176,
