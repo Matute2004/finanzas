@@ -19,7 +19,16 @@ type TickerData = {
   chart: ChartPoint[];
 };
 
-const WATCHLIST = ["AAPL", "MSFT", "NVDA", "AMZN", "GGAL", "YPFD", "PAMP"];
+const WATCHLIST = [
+  "AAPL.BA",
+  "MSFT.BA",
+  "NVDA.BA",
+  "AMZN.BA",
+  "GGAL.BA",
+  "YPFD.BA",
+  "PAMP.BA",
+  "BMA.BA",
+];
 const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: "1mo", label: "1M" },
   { key: "6mo", label: "6M" },
@@ -92,7 +101,7 @@ async function fetchTickerData(symbol: string, range: RangeKey): Promise<TickerD
 }
 
 export default function Home() {
-  const [selectedSymbol, setSelectedSymbol] = useState("AAPL");
+  const [selectedSymbol, setSelectedSymbol] = useState("AAPL.BA");
   const [selectedRange, setSelectedRange] = useState<RangeKey>("1mo");
   const [data, setData] = useState<TickerData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -123,6 +132,7 @@ export default function Home() {
 
   const path = useMemo(() => (data ? buildLinePath(data.chart) : ""), [data]);
   const positive = (data?.changePercent ?? 0) >= 0;
+  const hasChart = !!data && data.chart.length > 1;
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
@@ -195,7 +205,7 @@ export default function Home() {
                 <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.28em] text-slate-400">Activo</p>
-                    <h2 className="mt-2 text-4xl font-bold tracking-tight">{data.symbol}</h2>
+                    <h2 className="mt-2 text-4xl font-bold tracking-tight">{data.symbol.replace(".BA", "")}</h2>
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -237,38 +247,44 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-4">
-                  <svg viewBox="0 0 720 220" className="h-72 w-full overflow-visible">
-                    <defs>
-                      <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor={positive ? "#34d399" : "#f87171"} stopOpacity="0.35" />
-                        <stop offset="100%" stopColor={positive ? "#34d399" : "#f87171"} stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
+                {hasChart ? (
+                  <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-4">
+                    <svg viewBox="0 0 720 220" className="h-72 w-full overflow-visible">
+                      <defs>
+                        <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0%" stopColor={positive ? "#34d399" : "#f87171"} stopOpacity="0.35" />
+                          <stop offset="100%" stopColor={positive ? "#34d399" : "#f87171"} stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
 
-                    {[0, 1, 2, 3].map((line) => (
-                      <line
-                        key={line}
-                        x1="0"
-                        x2="720"
-                        y1={30 + line * 50}
-                        y2={30 + line * 50}
-                        stroke="rgba(148, 163, 184, 0.12)"
-                        strokeWidth="1"
+                      {[0, 1, 2, 3].map((line) => (
+                        <line
+                          key={line}
+                          x1="0"
+                          x2="720"
+                          y1={30 + line * 50}
+                          y2={30 + line * 50}
+                          stroke="rgba(148, 163, 184, 0.12)"
+                          strokeWidth="1"
+                        />
+                      ))}
+
+                      <path d={`${path} L 720,220 L 0,220 Z`} fill="url(#chartGradient)" opacity="0.9" />
+                      <path
+                        d={path}
+                        fill="none"
+                        stroke={positive ? "#34d399" : "#f87171"}
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                       />
-                    ))}
-
-                    <path d={`${path} L 720,220 L 0,220 Z`} fill="url(#chartGradient)" opacity="0.9" />
-                    <path
-                      d={path}
-                      fill="none"
-                      stroke={positive ? "#34d399" : "#f87171"}
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-white/10 bg-slate-950/40 p-8 text-center text-slate-400">
+                    No hubo datos suficientes para graficar este CEDEAR.
+                  </div>
+                )}
               </>
             ) : null}
           </div>
